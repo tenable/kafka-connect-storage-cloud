@@ -36,6 +36,8 @@ import java.util.LinkedList;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import io.confluent.common.utils.SystemTime;
 import io.confluent.common.utils.Time;
@@ -55,7 +57,7 @@ public class TopicPartitionWriter {
   private static final Logger log = LoggerFactory.getLogger(TopicPartitionWriter.class);
 
   private final Map<String, String> commitFiles;
-  private final Map<String, RecordWriter> writers;
+  private final ConcurrentMap<String, RecordWriter> writers;
   private final Map<String, Schema> currentSchemas;
   private final TopicPartition tp;
   private final S3Storage storage;
@@ -144,7 +146,7 @@ public class TopicPartitionWriter {
 
     buffer = new LinkedList<>();
     commitFiles = new HashMap<>();
-    writers = new HashMap<>();
+    writers = new ConcurrentHashMap<>();
     currentSchemas = new HashMap<>();
     startOffsets = new HashMap<>();
     endOffsets = new HashMap<>();
@@ -435,18 +437,15 @@ public class TopicPartitionWriter {
 
   private RecordWriter getWriter(SinkRecord record, String encodedPartition)
       throws ConnectException {
-    if (writers.containsKey(encodedPartition)) {
-      return writers.get(encodedPartition);
-    }
-    String commitFilename = getCommitFilename(encodedPartition);
-    log.debug(
-        "Creating new writer encodedPartition='{}' filename='{}'",
-        encodedPartition,
-        commitFilename
-    );
-    RecordWriter writer = writerProvider.getRecordWriter(connectorConfig, commitFilename);
-    writers.put(encodedPartition, writer);
-    return writer;
+    return writers.computeIfAbsent(encodedPartition, s -> {
+      String commitFilename = getCommitFilename(encodedPartition);
+      log.debug(
+              "Creating new writer encodedPartition='{}' filename='{}'",
+              encodedPartition,
+              commitFilename
+      );
+      return writerProvider.getRecordWriter(connectorConfig, commitFilename);
+    });
   }
 
   private String getCommitFilename(String encodedPartition) {
