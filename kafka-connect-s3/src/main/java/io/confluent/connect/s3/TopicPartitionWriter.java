@@ -536,14 +536,12 @@ public class TopicPartitionWriter {
       log.warn("Tried to commit file with missing starting offset partition: {}. Ignoring.");
       return;
     }
-
-    if (writers.containsKey(encodedPartition)) {
-      RecordWriter writer = writers.get(encodedPartition);
-      // Commits the file and closes the underlying output stream.
-      writer.commit();
-      writers.remove(encodedPartition);
-      log.debug("Removed writer for '{}'", encodedPartition);
-    }
+    // Commits the file and closes the underlying output stream.
+    writers.computeIfPresent(encodedPartition, (s, recordWriter) -> {
+      recordWriter.commit();
+      log.debug("Removing writer for '{}'", encodedPartition);
+      return null;
+    });
   }
 
   private void tagFile(String encodedPartition, String s3ObjectPath) {
