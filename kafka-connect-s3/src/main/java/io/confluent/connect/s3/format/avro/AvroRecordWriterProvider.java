@@ -59,10 +59,12 @@ public class AvroRecordWriterProvider implements RecordWriterProvider<S3SinkConn
       final DataFileWriter<Object> writer = new DataFileWriter<>(new GenericDatumWriter<>());
       Schema schema = null;
       S3OutputStream s3out;
+      boolean writerCreated = false;
 
       @Override
       public void write(SinkRecord record) {
-        if (schema == null) {
+        log.trace("Sink record: {} and schema {}", record, schema);
+        if (schema == null && !writerCreated) {
           schema = record.valueSchema();
           try {
             log.info("Opening record writer for: {}", filename);
@@ -70,11 +72,11 @@ public class AvroRecordWriterProvider implements RecordWriterProvider<S3SinkConn
             org.apache.avro.Schema avroSchema = avroData.fromConnectSchema(schema);
             writer.setCodec(CodecFactory.fromString(conf.getAvroCodec()));
             writer.create(avroSchema, s3out);
+            writerCreated = true;
           } catch (IOException e) {
             throw new ConnectException(e);
           }
         }
-        log.trace("Sink record: {}", record);
         Object value = avroData.fromConnectData(schema, record.value());
         try {
           // AvroData wraps primitive types so their schema can be included. We need to unwrap
